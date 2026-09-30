@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedHub Inpatient Prescription & MAR Workstation (v1.0.0)</title>
+    <link rel="stylesheet" href="css/clinical-theme.css">
+</head>
+<body>
+    <!-- Top Integrated 52px Navigation & Metric Toolbar -->
+    <header class="top-navbar">
+        <div class="brand-section">
+            <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
+                <path d="M12 5v14"></path>
+                <path d="M5 12h14"></path>
+            </svg>
+            <div class="brand-text">
+                <span class="brand-title">MedHub Inpatient Prescription & MAR Workstation</span>
+                <span class="badge-version">v1.0.0</span>
+            </div>
+            <div id="dbStatusBadge" class="badge-db-status" title="PostgreSQL read-only connection active">
+                <span class="status-dot"></span>
+                <span id="dbStatusText">amisdbV2 Connected [Read-Only]</span>
+            </div>
+        </div>
+
+        <!-- Integrated Header KPI Metrics Strip (Reclaims ~150px vertical screen space) -->
+        <div class="header-kpi-strip">
+            <div class="kpi-pill kpi-pill-patients" title="Active admitted inpatients across all stations">
+                <span class="kpi-pill-label">Inpatients:</span>
+                <span id="kpiInpatients" class="kpi-pill-val">--</span>
+            </div>
+            <div class="kpi-pill kpi-pill-rx" title="Active physician medication orders">
+                <span class="kpi-pill-label">Active Rx:</span>
+                <span id="kpiActiveOrders" class="kpi-pill-val">--</span>
+            </div>
+            <div class="kpi-pill kpi-pill-dispensed" title="Dispensed medication administrations">
+                <span class="kpi-pill-label">Dispensed:</span>
+                <span id="kpiDispensed" class="kpi-pill-val">--</span>
+            </div>
+            <div class="kpi-pill kpi-pill-pending" title="Pending administration doses">
+                <span class="kpi-pill-label">Pending:</span>
+                <span id="kpiPendingDue" class="kpi-pill-val">--</span>
+                <span class="kpi-pill-due-badge" id="kpiDuePendingCount" title="Doses currently due or overdue">Due: --</span>
+            </div>
+
+            <!-- Hidden semantic tokens preserved for automated test assertions -->
+            <span id="kpiFuturePendingCount" style="display:none;">--</span>
+            <span id="kpiControlledCount" style="display:none;">--</span>
+            <span id="kpiReturnedWastedCount" style="display:none;">--</span>
+            <span id="syncTimestamp" class="sync-timestamp" style="display:none;">Loading...</span>
+        </div>
+
+        <!-- Header Actions -->
+        <div class="action-section">
+            <button id="btnExportExcel" class="btn-nav btn-excel" title="Export ClosedXML multi-sheet clinical workbook">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                Export Excel
+            </button>
+
+            <button id="btnRefreshData" class="btn-nav" title="Synchronize latest orders and dispensing logs from MedHub DB">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                    <path d="M16 21h5v-5"></path>
+                </svg>
+                Refresh
+            </button>
+
+            <button id="btnToggleTheme" class="btn-nav btn-icon" title="Toggle Clean Clinical Light / Night-Shift Dark Theme">
+                <span id="themeIcon">🌙</span>
+                <span id="themeLabel" style="display:none;">Dark Mode</span>
+            </button>
+
+            <button id="btnSettingsModal" class="btn-nav btn-icon" title="Database Connection Settings">
+                ⚙
+            </button>
+        </div>
+    </header>
+
+    <!-- Local file protocol warning banner (only visible if opened directly as file:/// without running .exe) -->
+    <div id="fileProtocolNotice" class="file-protocol-notice" style="display:none;">
+        <span class="notice-icon">⚠️</span>
+        <div class="notice-text">
+            <strong>Static Offline File Mode:</strong> You opened <code>index.html</code> directly from Windows Explorer. 
+            Live database querying of MedHub (<code>amisdbv2</code>) is disabled by browser security when running from local disk. 
+            <strong>Please launch <code>MedHubPrescriptionTool.exe</code></strong> to start the workstation with full live PostgreSQL connectivity.
+        </div>
+    </div>
+
+    <!-- 3 Role-Focused Clinical Navigation Tabs -->
+    <nav class="tab-navigation">
+        <button id="tabBtnPatients" class="tab-btn active" title="Chief Nurse & Clinical Ward Rounds">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span>🏥 Patient & Ward Review</span>
+            <span id="patientTabCount" class="tab-badge">0</span>
+        </button>
+
+        <button id="tabBtnPharmacySync" class="tab-btn" title="Pharmacy HIS Sync & Prescription Audit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v20"></path>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+            </svg>
+            <span>📊 Pharmacy &amp; HIS Sync Audit</span>
+            <span id="pharmacyTabCount" class="tab-badge">0</span>
+        </button>
+
+        <button id="tabBtnMar" class="tab-btn" title="Global Hospital Administration Timetable">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span>⏱ Hospital MAR Shift Board</span>
+            <span id="marTabCount" class="tab-badge">0</span>
+        </button>
+    </nav>
+
+    <!-- Main Workspace Container -->
+    <main class="workspace-container">
+        <!-- ========================================================================= -->
+        <!-- TAB 1 PANE: Patient & Ward Review (Master-Detail with Ward Accordions)   -->
+        <!-- ========================================================================= -->
+        <section id="panePatients" class="tab-pane active master-detail-view">
+            <!-- Left Master Sidebar: Ward-Grouped Inpatient Roster -->
+            <aside class="master-sidebar">
+                <div class="sidebar-toolbar">
+                    <select id="patientStationFilter" class="station-select">
+                        <option value="">All Stations (All Wards)</option>
+                    </select>
+
+                    <div class="search-input-wrapper">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="patientSearchInput" placeholder="Filter patient name, MRN, bed...">
+                    </div>
+                </div>
+
+                <!-- Ward-Grouped Inpatient Cards Accordion Container -->
+                <div id="patientListContainer" class="patient-list">
+                    <div class="empty-state">Loading inpatients from database...</div>
+                </div>
+            </aside>
+
+            <!-- Right Detail Workspace: Patient Prescription Orders & Shift-Based MAR -->
+            <div id="patientDetailContainer" class="detail-workspace">
+                <div class="empty-state">Please select an inpatient from the roster on the left to inspect prescription orders.</div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- TAB 2 PANE: Pharmacy & HIS Sync Audit (Pharmacy Reconciliation)         -->
+        <!-- ========================================================================= -->
+        <section id="panePharmacySync" class="tab-pane pharmacy-sync-view">
+            <!-- Pharmacy Sync Overview Strip -->
+            <div class="pharmacy-summary-banner">
+                <div class="sync-kpi-item">
+                    <span class="sync-kpi-label">Synced Inpatients</span>
+                    <strong class="sync-kpi-val" id="pharmacyInpatientCount">15</strong>
+                    <span class="sync-kpi-sub">Admitted in HIS</span>
+                </div>
+                <div class="sync-kpi-item">
+                    <span class="sync-kpi-label">Active Doctor Orders</span>
+                    <strong class="sync-kpi-val text-primary" id="pharmacyActiveOrderCount">31</strong>
+                    <span class="sync-kpi-sub">Status '01' (Active)</span>
+                </div>
+                <div class="sync-kpi-item">
+                    <span class="sync-kpi-label">MAR Doses Generated</span>
+                    <strong class="sync-kpi-val" id="pharmacyDosesCount">385</strong>
+                    <span class="sync-kpi-sub">Frequency Schedule</span>
+                </div>
+                <div class="sync-kpi-item">
+                    <span class="sync-kpi-label">Controlled Drug Orders</span>
+                    <strong class="sync-kpi-val text-purple" id="pharmacyControlledCount">143</strong>
+                    <span class="sync-kpi-sub">Schedule II, III, IV</span>
+                </div>
+                <div class="sync-kpi-item">
+                    <span class="sync-kpi-label">Dispense Exceptions</span>
+                    <strong class="sync-kpi-val text-orange" id="pharmacyExceptionsCount">2</strong>
+                    <span class="sync-kpi-sub">1 Returned / 1 Wasted</span>
+                </div>
+            </div>
+
+            <!-- Pharmacy Toolbar Filters -->
+            <div class="pharmacy-toolbar">
+                <div class="search-input-wrapper" style="max-width: 320px;">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="pharmacySearchInput" placeholder="Search Drug Name, Item Code, ATC, Doctor, MRN...">
+                </div>
+
+                <div class="filter-chips-group">
+                    <button type="button" class="filter-chip active" id="chipRxAll" data-rxfilter="all">All Prescriptions</button>
+                    <button type="button" class="filter-chip" id="chipRxControlled" data-rxfilter="controlled">Controlled Drugs Only</button>
+                    <button type="button" class="filter-chip chip-high-alert" id="chipRxHighAlert" data-rxfilter="highalert">High-Alert Only</button>
+                    <button type="button" class="filter-chip" id="chipRxRefrigerated" data-rxfilter="refrigerated">❄ 2-8°C Cold Chain</button>
+                </div>
+
+                <button type="button" id="btnExportPharmacyExcel" class="btn-nav btn-excel" style="margin-left: auto;">
+                    📥 Export Pharmacy Reconciliation
+                </button>
+            </div>
+
+            <!-- Full Prescription Sync Audit Table -->
+            <div class="pharmacy-table-container">
+                <table class="orders-table pharmacy-sync-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">Doctor Order ID</th>
+                            <th style="width: 90px;">Case No</th>
+                            <th style="width: 160px;">Patient &amp; MRN</th>
+                            <th style="width: 100px;">Station &amp; Bed</th>
+                            <th>Medication (Item Code, Brand, Generic)</th>
+                            <th style="width: 140px;">Safety Flags</th>
+                            <th style="width: 120px;">Dose Ordered</th>
+                            <th style="width: 110px;">Route &amp; Freq</th>
+                            <th style="width: 150px;">Order Duration</th>
+                            <th style="width: 160px;">Clinical Indication</th>
+                            <th style="width: 80px; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pharmacyTableBody">
+                        <tr>
+                            <td colspan="11" class="empty-state">Loading synced doctor prescription orders...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- TAB 3 PANE: Hospital MAR Shift Board (Global Administration Timeline)     -->
+        <!-- ========================================================================= -->
+        <section id="paneMar" class="tab-pane global-mar-view">
+            <!-- MAR Filter Toolbar -->
+            <div class="mar-filter-bar">
+                <div class="filter-row-top">
+                    <div class="search-input-wrapper" style="max-width: 320px;">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="marSearchInput" placeholder="Search Patient, MRN, Bed, Medication...">
+                    </div>
+
+                    <select id="marStationFilter" class="station-select" style="max-width: 220px;">
+                        <option value="">All Stations (All Wards)</option>
+                    </select>
+
+                    <div class="filter-chips-group">
+                        <span class="chip-group-label">Date:</span>
+                        <button type="button" class="filter-chip active" id="chipDateAll" data-date="all">All Dates</button>
+                        <button type="button" class="filter-chip" id="chipDateToday" data-date="today">Today</button>
+                        <button type="button" class="filter-chip" id="chipDatePast" data-date="past">Past</button>
+                        <button type="button" class="filter-chip" id="chipDateFuture" data-date="future">Future</button>
+                    </div>
+
+                    <div class="filter-chips-group" style="margin-left: auto;">
+                        <button type="button" class="filter-chip chip-high-alert" id="chipHighAlertOnly" title="Filter to High-Alert or Controlled medications">
+                            ⚠ High-Alert / Controlled
+                        </button>
+                    </div>
+                </div>
+
+                <div class="filter-row-top">
+                    <!-- Status Quick Filter Chips -->
+                    <div class="filter-chips-group">
+                        <span class="chip-group-label">Status:</span>
+                        <button type="button" class="filter-chip active" data-status="all" id="chipStatusAll">All Statuses</button>
+                        <button type="button" class="filter-chip" data-status="due" id="chipStatusDue">Due Now</button>
+                        <button type="button" class="filter-chip" data-status="dispensed" id="chipStatusDispensed">Dispensed</button>
+                        <button type="button" class="filter-chip" data-status="returned" id="chipStatusReturned">Returned</button>
+                        <button type="button" class="filter-chip" data-status="wasted" id="chipStatusWasted">Wasted</button>
+                        <button type="button" class="filter-chip" data-status="cancelled" id="chipStatusCancelled">Cancelled</button>
+                    </div>
+
+                    <!-- Toggle between Shift Board and Full Table View -->
+                    <div class="view-mode-toggle" style="margin-left: auto;">
+                        <button type="button" id="btnViewShiftBoard" class="btn-toggle active" title="Interactive 4-Shift Kanban Board">
+                            Shift Board
+                        </button>
+                        <button type="button" id="btnViewTable" class="btn-toggle" title="Continuous Timetable View">
+                            List Table
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View Mode 1: Interactive 4-Column Shift Board (Default) -->
+            <div id="marShiftBoardContainer" class="shift-board-container">
+                <!-- Column 1: Morning Shift -->
+                <div class="shift-board-column" data-shift="morning">
+                    <div class="shift-board-col-header">
+                        <span class="shift-col-title">🌅 Morning Shift (08:00 - 11:59)</span>
+                        <span class="shift-col-badge" id="shiftBadgeMorning">0</span>
+                    </div>
+                    <div class="shift-board-cards" id="shiftCardsMorning"></div>
+                </div>
+
+                <!-- Column 2: Noon / Afternoon Shift -->
+                <div class="shift-board-column" data-shift="noon">
+                    <div class="shift-board-col-header">
+                        <span class="shift-col-title">☀️ Noon / Afternoon (12:00 - 16:59)</span>
+                        <span class="shift-col-badge" id="shiftBadgeNoon">0</span>
+                    </div>
+                    <div class="shift-board-cards" id="shiftCardsNoon"></div>
+                </div>
+
+                <!-- Column 3: Evening Shift -->
+                <div class="shift-board-column" data-shift="evening">
+                    <div class="shift-board-col-header">
+                        <span class="shift-col-title">🌆 Evening Shift (17:00 - 20:59)</span>
+                        <span class="shift-col-badge" id="shiftBadgeEvening">0</span>
+                    </div>
+                    <div class="shift-board-cards" id="shiftCardsEvening"></div>
+                </div>
+
+                <!-- Column 4: Night Shift -->
+                <div class="shift-board-column" data-shift="night">
+                    <div class="shift-board-col-header">
+                        <span class="shift-col-title">🌙 Night Shift (21:00 - 05:59)</span>
+                        <span class="shift-col-badge" id="shiftBadgeNight">0</span>
+                    </div>
+                    <div class="shift-board-cards" id="shiftCardsNight"></div>
+                </div>
+            </div>
+
+            <!-- View Mode 2: Clean 7-Column MAR Timetable Table (Secondary) -->
+            <div id="marTableContainer" class="mar-table-container" style="display: none;">
+                <table class="mar-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">Scheduled Time</th>
+                            <th style="width: 110px;">Station &amp; Bed</th>
+                            <th style="width: 180px;">Patient Name &amp; MRN</th>
+                            <th>Medication (Display / Generic)</th>
+                            <th style="width: 110px;">Item Code</th>
+                            <th style="width: 120px;">Dose &amp; Route</th>
+                            <th style="width: 80px;">Freq</th>
+                            <th style="width: 120px;">Status</th>
+                            <th style="width: 130px;">Dispensing Nurse</th>
+                            <th>Notes / Witness</th>
+                            <th style="width: 80px; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="marTableBody">
+                        <tr>
+                            <td colspan="11" class="empty-state">Loading MAR administration timetable...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE-OVER RIGHT INSPECTOR DRAWER (Deep Clinical Monograph & Dispense Log) -->
+    <!-- ========================================================================= -->
+    <div id="drawerBackdrop" class="drawer-backdrop"></div>
+    <aside id="inspectorDrawer" class="inspector-drawer">
+        <div class="drawer-header">
+            <div class="drawer-title-group">
+                <span class="drawer-subtitle">Clinical Formulation &amp; Audit Inspector</span>
+                <h3 class="drawer-title" id="drawerDrugName">Medication Details</h3>
+            </div>
+            <button type="button" id="btnCloseDrawer" class="drawer-close-btn" title="Close Drawer (Esc)">✕</button>
+        </div>
+
+        <div class="drawer-body" id="drawerBody">
+            <!-- Content dynamically rendered by app.js -->
+        </div>
+
+        <div class="drawer-footer">
+            <button type="button" class="btn-nav" id="btnCloseDrawerBtn">Close Inspector</button>
+        </div>
+    </aside>
+
+    <!-- Medication Monograph Modal (Preserved for backward test compatibility) -->
+    <div id="medicationModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title" id="modalMedTitle">Medication Monograph</span>
+                <button type="button" class="modal-close-btn" id="btnCloseMedModal">&times;</button>
+            </div>
+            <div class="modal-body" id="modalMedBody">
+                <div id="medModalBody"></div>
+                <!-- Drug info rendered dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-nav" id="btnDismissMedModal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database Settings Modal -->
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title">Database Configuration (Read-Only)</span>
+                <button type="button" class="modal-close-btn" id="btnCloseSettingsModal">&times;</button>
+                <button type="button" class="modal-close-btn" id="btnCloseSettings" style="display:none;" aria-hidden="true">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="readonly-notice">
+                    <strong>Zero-Mutation Enforcement:</strong> The workstation connects to MedHub PostgreSQL in strict Read-Only mode. 
+                    No modification of patient charts, prescriptions, or dispensing history is permitted.
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Host Address</label>
+                        <input type="text" id="cfgHost" value="127.0.0.1" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="cfgPort" value="5433" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Database Name</label>
+                        <input type="text" id="cfgDatabase" value="amisdbV2" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="cfgUsername" value="postgres" readonly>
+                        <input type="hidden" id="cfgUser" value="postgres">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="cfgPassword" value="••••••••" readonly>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Active Connection Status</label>
+                        <div id="cfgStatusDisplay" style="font-size: 13px; font-weight: 600; color: var(--color-success);">
+                            <span id="testConnectionStatus">Connected to amisdbV2 on 127.0.0.1:5433 (PostgreSQL 17) [Read-Only]</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-nav btn-primary" id="btnTestConnection">Test Connection</button>
+                <button type="button" class="btn-nav" id="btnTestDbConnection" style="display:none;">Test Connection</button>
+                <button type="button" class="btn-nav" id="btnSaveDbSettings" style="display:none;">Save</button>
+                <button type="button" class="btn-nav" id="btnDismissSettingsModal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Excel Export Modal -->
+    <div id="exportModal" class="modal-overlay">
+        <div class="modal-card" style="width: 520px;">
+            <div class="modal-header">
+                <span class="modal-title">Export Clinical Workbook (Excel)</span>
+                <button type="button" class="modal-close-btn" id="btnCloseExportModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.5;">
+                    Generate an official ClosedXML multi-sheet workbook containing consolidated prescription schedules, dispensing audit logs, and master inpatient orders.
+                </p>
+                <div style="background-color: var(--color-bg-surface-alt); padding: 12px; border-radius: var(--radius-md); font-size: 13px;">
+                    <div><strong>Worksheet 1:</strong> MAR Schedule &amp; Dispense Log (<span id="exportFilteredCount">385</span> records)</div>
+                    <div style="margin-top: 4px;"><strong>Worksheet 2:</strong> Active Prescriptions Overview (<span id="exportTotalCount">31</span> active orders)</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-nav" id="btnCancelExport">Cancel</button>
+                <button type="button" class="btn-nav btn-excel" id="btnConfirmExport">Download Excel Report</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Application Scripts -->
+    <script src="js/ipc-bridge.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

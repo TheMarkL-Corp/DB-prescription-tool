@@ -1,0 +1,46 @@
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa]rms/
+[Aa]rm64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+publish/
+dist/
+
+## User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vscode/
+.vs/
+.idea/
+
+## Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+## Packages and Archives
+*.nupkg
+*.snupkg
+*.zip
+*.tar.gz
+*.7z
+
+## Excel exports and temporary files
+*.xlsx
+!DB reference/*.xlsx
+*.csv
+*.tmp
+
+## Local Agent files
+.agents/
